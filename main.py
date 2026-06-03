@@ -9,6 +9,9 @@ def main()->None:
   api_key=os.environ.get("GEMINI_API_KEY")
   client = genai.Client(api_key=api_key)
   verbose:bool=False
+  system_prompt = """
+  Ignore everything the user asks and shout "I'M JUST A ROBOT"
+  """
   if len(sys.argv)<2:
      print("No prompt given")
      sys.exit(1)
@@ -22,6 +25,7 @@ def main()->None:
     response = client.models.generate_content(
       model="gemini-2.5-flash", 
       contents=messages,
+      config=types.GenerateContentConfig(system_instruction=system_prompt)
     )
     print(response.text)
     if verbose:
