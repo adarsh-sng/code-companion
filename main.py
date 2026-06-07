@@ -7,6 +7,7 @@ from functions.get_file_info import schema_get_files_info
 from functions.get_file_content import schema_get_files_content
 from functions.run_python_file import schema_run_python_file
 from functions.write_files import schema_write_files
+from call_function import call_function
 
 
 def main() -> None:
@@ -41,26 +42,45 @@ def main() -> None:
         ],
     )
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=messages,
-            config=types.GenerateContentConfig(
-                tools=[available_functions], system_instruction=system_prompt
-            ),
-        )
-        if response is None or response.usage_metadata is None:
-            print("response is malinformed")
-            return
-        if verbose:
-            print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
-            print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
-        if response.function_calls:
-            for function_call_part in response.function_calls:
+        for _ in range(20):
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=messages,
+                config=types.GenerateContentConfig(
+                    tools=[available_functions], system_instruction=system_prompt
+                ),
+            )
+            if response.candidates:
+                messages.append(response.candidates[0].content)
+            if response is None or response.usage_metadata is None:
+                print("response is malinformed")
+                return
+            if verbose:
+                print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
                 print(
-                    f"Calling function: {function_call_part.name}({function_call_part.args})"
+                    f"Response tokens: {response.usage_metadata.candidates_token_count}"
                 )
-        else:
-            print(response.text)
+            if response.function_calls:
+                for function_call_part in response.function_calls:
+                    function_response = call_function(
+                        function_call_part, verbose=verbose
+                    )
+                    if verbose:
+                        print(
+                            f"-> {function_response.parts[0].function_response.response}"
+                        )  # these could be none so handle exception later
+                    tool_message = types.Content(
+                        role="tool",
+                        parts=[
+                            types.Part.from_function_response(
+                                name=function_call_part.name, response=function_response.parts[0].function_response.response
+                            )
+                        ],
+                    )
+                    messages.append(tool_message)
+            else:
+                print(response.text)
+                return
 
     except errors.ClientError as e:
         if e.code == 429:
